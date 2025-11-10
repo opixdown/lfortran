@@ -4297,8 +4297,25 @@ public:
                             }
                             if ((!is_correct_type_func && !is_correct_type_implieddoloop) ||
                                 (func_call != nullptr && strcmp(func_call->m_func, sym_type->m_name) != 0)) {
+                                    // CHECK: print minimal info 
+                                    std::cerr << "CHECK: is_correct_type_func="
+                                            << (is_correct_type_func ? "true" : "false")
+                                            << ", is_correct_type_implieddoloop="
+                                            << (is_correct_type_implieddoloop ? "true" : "false")
+                                            << " func_call=" << (func_call ? "present" : "null")
+                                            << std::endl;
+
+                                    if (func_call && func_call->m_func) {
+                                        std::cerr << "CHECK: func_call->m_func=\"" << func_call->m_func << "\"" << std::endl;
+                                    }
+
+                                    // Print a minimal summary of sym_type
+                                    if (sym_type) {
+                                        std::cerr << "CHECK: sym_type->base.type=" << (int) sym_type->base.type << std::endl;
+                                    }
+                                    
                                 diag.add(Diagnostic(
-                                    "Array members must me of the same type as the struct",
+                                    "Array members must be of the same type as the struct",
                                     Level::Error, Stage::Semantic, {
                                         Label("",{array_init->m_args[0]->base.loc})
                                     }));
