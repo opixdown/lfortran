@@ -308,6 +308,7 @@ void handle_integer(char* format, int64_t val, char** result, bool is_signed_plu
     }
 }
 
+
 void handle_logical(char* format, bool val, char** result) {
     int width = atoi(format + 1);
     for (int i = 0; i < width - 1; i++) {
@@ -883,6 +884,7 @@ char** parse_fortran_format(const fchar* format, const int64_t format_len, int64
             case 'l' :
             case 'b' :
             case 'g' :
+            case 'z' :
                 start = index++;
                 bool dot = false;
                 if(tolower(cformat[index]) == 's') index++;
@@ -1010,6 +1012,10 @@ char primitive_enum_to_format_specifier(Primitive_Types primitive_enum){
         case INTEGER_16_TYPE:
         case INTEGER_32_TYPE:
         case INTEGER_64_TYPE:
+        case UNSIGNED_INTEGER_8_TYPE:
+        case UNSIGNED_INTEGER_16_TYPE:
+        case UNSIGNED_INTEGER_32_TYPE:
+        case UNSIGNED_INTEGER_64_TYPE:
             return 'i';
             break;
         case FLOAT_32_TYPE:
@@ -1038,6 +1044,10 @@ bool is_format_match(char format_value, Primitive_Types current_arg_type){
 
     char lowered_format_value = tolower(format_value);
     if (lowered_format_value == 'g') return true;
+    if (lowered_format_value == 'z') {
+        return current_arg_correct_format == 'i' ||
+               current_arg_correct_format == 'f';
+    }
     if(lowered_format_value == 'd' || lowered_format_value == 'e'){
         lowered_format_value = 'f';
     }
@@ -1051,6 +1061,125 @@ bool is_format_match(char format_value, Primitive_Types current_arg_type){
     } else {
         return true;
     }
+}
+
+void handle_hexadecimal(const char* format, Primitive_Types type,
+        void* arg_ptr, char** result) {
+    int width = 0;
+    int min_digits = 1;
+    if (strlen(format) > 1) {
+        width = atoi(format + 1);
+    }
+    const char *dot = strchr(format + 1, '.');
+    if (dot != NULL) {
+        int parsed = atoi(dot + 1);
+        if (parsed > 0) {
+            min_digits = parsed;
+        }
+    }
+
+    int byte_count = 0;
+    uint64_t raw = 0;
+    switch (type) {
+        case INTEGER_8_TYPE:
+            byte_count = 1;
+            raw = (uint64_t)(uint8_t)(*(int8_t*)arg_ptr);
+            break;
+        case INTEGER_16_TYPE:
+            byte_count = 2;
+            raw = (uint64_t)(uint16_t)(*(int16_t*)arg_ptr);
+            break;
+        case INTEGER_32_TYPE:
+            byte_count = 4;
+            raw = (uint64_t)(uint32_t)(*(int32_t*)arg_ptr);
+            break;
+        case INTEGER_64_TYPE:
+            byte_count = 8;
+            raw = (uint64_t)(*(int64_t*)arg_ptr);
+            break;
+        case UNSIGNED_INTEGER_8_TYPE:
+            byte_count = 1;
+            raw = (uint64_t)(*(uint8_t*)arg_ptr);
+            break;
+        case UNSIGNED_INTEGER_16_TYPE:
+            byte_count = 2;
+            raw = (uint64_t)(*(uint16_t*)arg_ptr);
+            break;
+        case UNSIGNED_INTEGER_32_TYPE:
+            byte_count = 4;
+            raw = (uint64_t)(*(uint32_t*)arg_ptr);
+            break;
+        case UNSIGNED_INTEGER_64_TYPE:
+            byte_count = 8;
+            raw = (uint64_t)(*(uint64_t*)arg_ptr);
+            break;
+        case FLOAT_32_TYPE: {
+            byte_count = sizeof(float);
+            uint32_t tmp = 0;
+            memcpy(&tmp, arg_ptr, sizeof(float));
+            raw = (uint64_t)tmp;
+            break;
+        }
+        case FLOAT_64_TYPE: {
+            byte_count = sizeof(double);
+            uint64_t tmp = 0;
+            memcpy(&tmp, arg_ptr, sizeof(double));
+            raw = tmp;
+            break;
+        }
+        default:
+            fprintf(stderr, "Unsupported type for Z edit descriptor\n");
+            exit(1);
+    }
+
+    int total_digits = byte_count * 2;
+    if (total_digits <= 0) {
+        total_digits = 1;
+    }
+
+    char *hex_full = (char*)malloc((total_digits + 1) * sizeof(char));
+    snprintf(hex_full, total_digits + 1, "%0*llX", total_digits,
+        (unsigned long long)raw);
+
+    int start_idx = 0;
+    while (start_idx < total_digits - 1 && hex_full[start_idx] == '0') {
+        start_idx++;
+    }
+
+    int digits_len = total_digits - start_idx;
+    if (digits_len <= 0) digits_len = 1;
+    if (min_digits < 1) min_digits = 1;
+
+    int output_len = digits_len > min_digits ? digits_len : min_digits;
+    char *formatted = (char*)malloc((output_len + 1) * sizeof(char));
+    int leading_zeros = output_len - digits_len;
+    for (int i = 0; i < leading_zeros; i++) {
+        formatted[i] = '0';
+    }
+    memcpy(formatted + leading_zeros, hex_full + start_idx, digits_len);
+    formatted[output_len] = '\0';
+
+    if (width > 0 && width < output_len) {
+        for (int i = 0; i < width; i++) {
+            *result = append_to_string(*result, "*");
+        }
+        free(hex_full);
+        free(formatted);
+        return;
+    }
+
+    if (width > output_len) {
+        int padding = width - output_len;
+        char *spaces = (char*)malloc((padding + 1) * sizeof(char));
+        memset(spaces, ' ', padding);
+        spaces[padding] = '\0';
+        *result = append_to_string(*result, spaces);
+        free(spaces);
+    }
+
+    *result = append_to_string(*result, formatted);
+    free(hex_full);
+    free(formatted);
 }
 
 typedef struct stack {
@@ -1900,6 +2029,9 @@ LFORTRAN_API char* _lcompilers_string_format_fortran(const char* format, int64_t
                         }
                         result = append_to_string(result, binary_str);
                     }
+                } else if (tolower(value[0]) == 'z') {
+                    handle_hexadecimal(value, s_info.current_element_type,
+                        s_info.current_arg_info.current_arg, &result);
                 } else if (tolower(value[0]) == 'g') {
                     int width = 0;
                     int precision = 0;
@@ -3704,7 +3836,8 @@ _lfortran_open(int32_t unit_num,
     char* action_c = to_c_string((const fchar*)action, action_len);
 
     _lfortran_inquire(
-        (const fchar*)f_name, f_name_len, file_exists, -1, NULL, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        (const fchar*)f_name, f_name_len, file_exists, -1, NULL, NULL, NULL,
+        NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
     char* access_mode = NULL;
     /*
      STATUS=`specifier` in the OPEN statement
@@ -3926,7 +4059,9 @@ LFORTRAN_API void _lfortran_inquire(const fchar* f_name_data, int64_t f_name_len
                                     bool *opened, int32_t *size, int32_t *pos,
                                     char *write, int64_t write_len,
                                     char *read, int64_t read_len,
-                                    char *readwrite, int64_t readwrite_len) {
+                                    char *readwrite, int64_t readwrite_len,
+                                    char *access, int64_t access_len,
+                                    char *name, int64_t name_len) {
     if (f_name_data && unit_num != -1) {
         printf("File name and file unit number cannot be specified together.\n");
         exit(1);
@@ -3949,9 +4084,10 @@ LFORTRAN_API void _lfortran_inquire(const fchar* f_name_data, int64_t f_name_len
     }
     if (unit_num != -1) {
         bool unit_file_bin;
+        int access_id = -1;
         bool read_access;
         bool write_access;
-        FILE *fp = get_file_pointer_from_unit(unit_num, &unit_file_bin, NULL, &read_access, &write_access);
+        FILE *fp = get_file_pointer_from_unit(unit_num, &unit_file_bin, &access_id, &read_access, &write_access);
         if (write != NULL) {
             if (write_access) {
                 _lfortran_copy_str_and_pad(write, write_len, "YES", 3);
@@ -3971,7 +4107,29 @@ LFORTRAN_API void _lfortran_inquire(const fchar* f_name_data, int64_t f_name_len
                 _lfortran_copy_str_and_pad(readwrite, readwrite_len, "NO", 2);
             }
         }
-        *opened = (fp != NULL);
+        if (access != NULL) {
+            char *access_str = "";
+            if (access_id == 0) {
+                access_str = "SEQUENTIAL";
+            } else if (access_id == 1) {
+                access_str = "STREAM";
+            } else if (access_id == 2) {
+                access_str = "DIRECT";
+            }
+            _lfortran_copy_str_and_pad(access, access_len, access_str, strlen(access_str));
+        }
+        if (name != NULL) {
+            bool dummy_unit_file_bin;
+            char *unit_name = get_file_name_from_unit(unit_num, &dummy_unit_file_bin);
+            if (unit_name != NULL) {
+                _lfortran_copy_str_and_pad(name, name_len, unit_name, strlen(unit_name));
+            } else {
+                _lfortran_copy_str_and_pad(name, name_len, "", 0);
+            }
+        }
+        if (opened != NULL) {
+            *opened = (fp != NULL);
+        }
         if (pos != NULL && fp != NULL) {
             long p = ftell(fp);
             *pos = (int32_t)p + 1;
