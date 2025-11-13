@@ -4298,58 +4298,79 @@ public:
                                     is_correct_type_implieddoloop = false;
                             }
 
-                        if ((!is_correct_type_func && !is_correct_type_implieddoloop) ||
-                            (func_call != nullptr && strcmp(func_call->m_func, sym_type->m_name) != 0)) {
-
-                            // Check if all array elements are the same derived type
-                            bool all_types_match = true;
-                            
-                            // Get the expected struct type name from the variable declaration
-                            std::string expected_type_name = "";
-                            if (sym_type && sym_type->m_name) {
-                                expected_type_name = to_lower(sym_type->m_name);
-                            }
-                            
-                            // Check if we dealing with derived types 
-                            ASR::symbol_t* expected_type_sym = nullptr;
-                            if (!expected_type_name.empty()) {
-                                expected_type_sym = current_scope->resolve_symbol(expected_type_name);
-                            }
-                            
-                            if (expected_type_sym && ASR::is_a<ASR::Struct_t>(*expected_type_sym)) {
-                                // Check all array elements have the same derived type
-                                for (size_t i = 0; i < array_init->n_args; i++) {
-                                    this->visit_expr(*array_init->m_args[i]);
-                                    ASR::expr_t* elem = ASRUtils::EXPR(tmp);
-                                    
-                                    // Get the symbol that this element refers to, T_ONE, T_TWO, etc.
-                                    if (ASR::is_a<ASR::Var_t>(*elem)) {
-                                        ASR::Var_t* var = ASR::down_cast<ASR::Var_t>(elem);
-                                        ASR::ttype_t* elem_type = ASRUtils::symbol_type(var->m_v);
+                            if ((!is_correct_type_func && !is_correct_type_implieddoloop) ||
+                                (func_call != nullptr && strcmp(func_call->m_func, sym_type->m_name) != 0)) {
+                                
+                                // NEW FIX: Check if all array elements are the same derived type
+                                bool all_types_match = true;
+                                
+                                // Get the expected struct type name from the variable declaration
+                                std::string expected_type_name = "";
+                                if (sym_type && sym_type->m_name) {
+                                    expected_type_name = to_lower(sym_type->m_name);
+                                }
+                                
+                                // Check if we're dealing with derived types (looking for a Struct symbol)
+                                ASR::symbol_t* expected_type_sym = nullptr;
+                                if (!expected_type_name.empty()) {
+                                    expected_type_sym = current_scope->resolve_symbol(expected_type_name);
+                                }
+                                
+                                if (expected_type_sym && ASR::is_a<ASR::Struct_t>(*expected_type_sym)) {
+                                    // Check all array elements have the same derived type
+                                    for (size_t i = 0; i < array_init->n_args; i++) {
+                                        this->visit_expr(*array_init->m_args[i]);
+                                        ASR::expr_t* elem = ASRUtils::EXPR(tmp);
                                         
-                                        // Check if it's a StructType
-                                        if (ASR::is_a<ASR::StructType_t>(*elem_type)) {
-                                            // For StructType, we need to compare the actual struct definitions
-                                            // we compare by checking if types are compatible
-                                            ASR::StructType_t* struct_type = ASR::down_cast<ASR::StructType_t>(elem_type);
-                                            (void)struct_type;
-
-                                            // Types match if we got here (both are StructType derived from same struct)
-                                            continue;
+                                        // Get the symbol that this element refers to (e.g., T_ONE)
+                                        if (ASR::is_a<ASR::Var_t>(*elem)) {
+                                            ASR::Var_t* var = ASR::down_cast<ASR::Var_t>(elem);
+                                            ASR::ttype_t* elem_type = ASRUtils::symbol_type(var->m_v);
+                                            
+                                            // Check if it's a StructType
+                                            if (!ASR::is_a<ASR::StructType_t>(*elem_type)) {
+                                                // Element is not a struct type at all
+                                                all_types_match = false;
+                                                break;
+                                            }
                                         } else {
-                                            // Element is not a struct type at all
+                                            // Not a variable reference
                                             all_types_match = false;
                                             break;
                                         }
-                                    } else {
-                                        // Not a variable reference
-                                        all_types_match = false;
-                                        break;
                                     }
-                                }
-                                
-                                // Only error if types don't match
-                                if (!all_types_match) {
+                                    
+                                    // Only error if types don't match
+                                    if (!all_types_match) {
+                                        diag.add(Diagnostic(
+                                            "Array members must be of the same type as the struct",
+                                            Level::Error, Stage::Semantic, {
+                                                Label("",{array_init->m_args[0]->base.loc})
+                                            }));
+                                        throw SemanticAbort();
+                                    }
+                                    
+                                    // if all types match build ArrayConstructor for derived types
+                                    Vec<ASR::expr_t*> elems;
+                                    elems.reserve(al, array_init->n_args);
+                                    for (size_t i = 0; i < array_init->n_args; i++) {
+                                        this->visit_expr(*array_init->m_args[i]);
+                                        elems.push_back(al, ASRUtils::EXPR(tmp));
+                                    }
+                                    ASR::ttype_t *elem_type = ASRUtils::expr_type(elems[0]);
+                                    tmp = ASR::make_ArrayConstructor_t(
+                                        al,
+                                        array_init->base.base.loc,
+                                        elems.p,
+                                        elems.size(),
+                                        elem_type,
+                                        nullptr,
+                                        ASR::arraystorageType::ColMajor
+                                    );
+                                    init_expr = ASRUtils::EXPR(tmp);
+                                    return; // Skip the rest
+                                } else {
+                                    // Original error for non-struct types
                                     diag.add(Diagnostic(
                                         "Array members must be of the same type as the struct",
                                         Level::Error, Stage::Semantic, {
@@ -4357,18 +4378,8 @@ public:
                                         }));
                                     throw SemanticAbort();
                                 }
-                                // If all types match 
-                            } else {
-                                // Original error for non-struct types
-                                diag.add(Diagnostic(
-                                    "Array members must be of the same type as the struct",
-                                    Level::Error, Stage::Semantic, {
-                                        Label("",{array_init->m_args[0]->base.loc})
-                                    }));
-                                throw SemanticAbort();
                             }
                         }
-                    }
 
                         visit_ArrayInitializer(*array_init);
                         init_expr = ASRUtils::EXPR(tmp);
