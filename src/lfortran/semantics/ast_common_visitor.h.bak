@@ -4272,14 +4272,11 @@ public:
                         if (array_init->n_args > 0) {
                             bool is_correct_type_func = false;
                             bool is_correct_type_implieddoloop = false;
-                            bool is_correct_type_name = false;
                             AST::FuncCallOrArray_t* func_call = nullptr;
-                            ASR::Struct_t* name_struct = nullptr;
 
                             is_correct_type_func = AST::is_a<AST::FuncCallOrArray_t>(*array_init->m_args[0]);
                             is_correct_type_implieddoloop = AST::is_a<AST::ImpliedDoLoop_t>(*array_init->m_args[0]);
-                            is_correct_type_name = AST::is_a<AST::Name_t>(*array_init->m_args[0]);
-
+                            
                             if (is_correct_type_func) {
                                 func_call = AST::down_cast<AST::FuncCallOrArray_t>(array_init->m_args[0]);
                             }
@@ -4291,26 +4288,17 @@ public:
                                         func_call = AST::down_cast<AST::FuncCallOrArray_t>(idoloop->m_values[0]);
                                     }
                                     else if (AST::is_a<AST::Name_t>(*idoloop->m_values[0])){
-                                        // TODO:: Check if Array Type Matches Do Loop Assignment Type,
+                                        // TODO:: Check if Array Type Matches Do Loop Assignment Type, 
                                         is_correct_type_implieddoloop = true;
+                                    }
+                                    } else {
+                                        is_correct_type_implieddoloop = false;
                                     }
                                 } else {
                                     is_correct_type_implieddoloop = false;
-                                }
                             }
-                            else if (is_correct_type_name) {
-                                AST::Name_t* name = AST::down_cast<AST::Name_t>(array_init->m_args[0]);
-                                std::string name_id = to_lower(std::string(name->m_id));
-                                ASR::symbol_t* name_symbol = current_scope->resolve_symbol(name_id);
-                                if (name_symbol != nullptr && ASR::is_a<ASR::Variable_t>(*name_symbol)) {
-                                    ASR::Variable_t* name_vari = ASR::down_cast<ASR::Variable_t>(name_symbol);
-                                    name_struct = ASR::down_cast<ASR::Struct_t>(name_vari->m_type_declaration);
-                                }
-                            }
-
-                            if ((!is_correct_type_func && !is_correct_type_implieddoloop && !is_correct_type_name) ||
-                                (func_call != nullptr && strcmp(func_call->m_func, sym_type->m_name) != 0) ||
-                                (name_struct != nullptr && strcmp(name_struct->m_name, sym_type->m_name) != 0)) {
+                            if ((!is_correct_type_func && !is_correct_type_implieddoloop) ||
+                                (func_call != nullptr && strcmp(func_call->m_func, sym_type->m_name) != 0)) {
                                 diag.add(Diagnostic(
                                     "Array members must me of the same type as the struct",
                                     Level::Error, Stage::Semantic, {
@@ -4319,33 +4307,7 @@ public:
                                 throw SemanticAbort();
                             }
                         }
-                            // Detect if this is a derived-type array -> build ArrayConstructor instead of ArrayConstant
-                            ASR::ttype_t *target_type = current_variable_type_;
-                            target_type = ASRUtils::type_get_past_pointer(target_type);
-                            target_type = ASRUtils::type_get_past_allocatable(target_type);
 
-                            if (ASR::is_a<ASR::StructType_t>(*target_type)) {
-                                Vec<ASR::expr_t*> elems;
-                                elems.reserve(al, array_init->n_args);
-
-                                for (size_t k = 0; k < array_init->n_args; k++) {
-                                    this->visit_expr(*array_init->m_args[k]);
-                                    elems.push_back(al, ASRUtils::EXPR(tmp));
-                                }
-
-                                tmp = ASR::make_ArrayConstructor_t(
-                                    al,
-                                    array_init->base.base.loc,
-                                    elems.p,
-                                    elems.size(),
-                                    target_type,
-                                    nullptr,
-                                    ASR::arraystorageType::ColMajor
-                                );
-
-                                init_expr = ASRUtils::EXPR(tmp);
-                                return;   // VERY IMPORTANT
-                            }
                         visit_ArrayInitializer(*array_init);
                         init_expr = ASRUtils::EXPR(tmp);
                     } else {
@@ -9748,8 +9710,7 @@ public:
         for( size_t i = 0; i < x.n_object_list; i++ ) {
             this->visit_expr(*(x.m_object_list[i]));
             ASR::expr_t *expr = ASRUtils::EXPR(tmp);
-            ASR::ttype_t* type_ = ASRUtils::type_get_past_allocatable(
-                ASRUtils::expr_type(expr));
+            ASR::ttype_t* type_ = ASRUtils::expr_type(expr);
             if( type == nullptr ) {
                 type = type_;
             } else {
@@ -9966,8 +9927,7 @@ public:
         for( size_t i = 0; i < x.n_values; i++ ) {
             this->visit_expr(*(x.m_values[i]));
             ASR::expr_t *expr = ASRUtils::EXPR(tmp);
-            ASR::ttype_t* type_ = ASRUtils::type_get_past_allocatable(
-                ASRUtils::expr_type(expr));
+            ASR::ttype_t* type_ = ASRUtils::expr_type(expr);
             if( type == nullptr ) {
                 type = type_;
             } else {
@@ -11309,20 +11269,6 @@ public:
             }
 
             ASR::symbol_t* a_name = current_scope->resolve_symbol(matched_func_name);
-            if (!a_name && first_struct != nullptr && proc) {
-                // Create an ExternalSymbol in the current scope to reference the
-                // type-bound procedure so ASR verification passes.
-                ASR::symbol_t* proc_owner = ASRUtils::get_asr_owner(proc);
-                std::string module_name = "";
-                if (proc_owner) {
-                    module_name = ASRUtils::symbol_name(proc_owner);
-                }
-                a_name = ASR::down_cast<ASR::symbol_t>(ASR::make_ExternalSymbol_t(
-                    al, proc->base.loc, current_scope,
-                    s2c(al, matched_func_name), proc, s2c(al, module_name),
-                    nullptr, 0, s2c(al, std::string(func->m_name)), ASR::accessType::Public));
-                current_scope->add_symbol(matched_func_name, a_name);
-            }
             if (!a_name) {
                 diag.add(Diagnostic("Unable to resolve matched function: `" + matched_func_name
                                         + "` for defined binary operation",
