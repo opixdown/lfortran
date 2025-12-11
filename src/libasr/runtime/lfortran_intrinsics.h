@@ -237,7 +237,8 @@ LFORTRAN_API int64_t _lfortran_open(int32_t unit_num,
     char* access, int64_t access_len,
     char* iomsg, int64_t iomsg_len,
     int32_t *iostat,
-    char* action, int64_t action_len);
+    char* action, int64_t action_len,
+    int32_t recl);
 LFORTRAN_API void _lfortran_flush(int32_t unit_num);
 LFORTRAN_API void _lfortran_inquire(const fchar* f_name_data, int64_t f_name_len, bool *exists, int32_t unit_num,
                                     bool *opened, int32_t *size, int32_t *pos,
@@ -263,7 +264,7 @@ LFORTRAN_API void _lfortran_read_char(char **p, int64_t p_len, int32_t unit_num)
 LFORTRAN_API void _lfortran_string_write(char **str_holder, bool is_allocatable, bool is_deferred, 
         int64_t* len, int32_t* iostat, const char* format,
         int64_t format_len, ...);
-LFORTRAN_API void _lfortran_file_write(int32_t unit_num, int32_t* iostat, const char* format_data, int64_t format_len, ...);
+LFORTRAN_API void _lfortran_file_write(int32_t unit_num, int32_t rec, int32_t* iostat, const char* format_data, int64_t format_len, ...);
 LFORTRAN_API void _lfortran_string_read_i32(char *str, int64_t len, char *format, int32_t *i);
 LFORTRAN_API void _lfortran_string_read_i32_array(char *str, int64_t len, char *format, int32_t *arr);
 LFORTRAN_API void _lfortran_string_read_i64(char *str, int64_t len, char *format, int64_t *i);

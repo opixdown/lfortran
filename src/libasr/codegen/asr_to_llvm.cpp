@@ -11363,6 +11363,7 @@ public:
 
     void visit_FileOpen(const ASR::FileOpen_t &x) {
         llvm::Value *unit_val = nullptr;
+        llvm::Value *recl_val = nullptr;
         llvm::Value* f_name_data{}, *f_name_len{};
         llvm::Value *status_data{}, *status_len{};
         llvm::Value *form_data{},   *form_len{};
@@ -11432,7 +11433,8 @@ public:
                         character_type, i64, //access, access_len
                         character_type, i64, //iomsg, iomsg_len
                         llvm::Type::getInt32Ty(context)->getPointerTo(),
-                        character_type, i64 // action, action_len
+                        character_type, i64, // action, action_len
+                        llvm::Type::getInt32Ty(context) // recl 
                     }, false);
             fn = llvm::Function::Create(function_type,
                     llvm::Function::ExternalLinkage, runtime_func_name, module.get());
@@ -11444,7 +11446,8 @@ public:
             access_data, access_len,
             iomsg_data, iomsg_len,
             iostat,
-            action, action_len});
+            action, action_len,
+            recl_val});
     }
 
     void visit_FileInquire(const ASR::FileInquire_t &x) {
@@ -11719,6 +11722,16 @@ public:
             }
             return;
         }
+        llvm::Value *rec = nullptr;
+        if (x.m_rec) {
+            this->visit_expr_wrapper(x.m_rec, true);
+            rec = tmp;
+            if (rec->getType()->isPointerTy()) {
+                rec = llvm_utils->CreateLoad2(llvm::Type::getInt32Ty(context), rec);
+            }
+        } else {
+            rec = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0); // 0 means no record
+        }
         std::vector<llvm::Value *> args;
         std::vector<llvm::Type *> args_type;
         std::vector<std::string> fmt;
@@ -11744,6 +11757,7 @@ public:
             ptr_loads = 1;
             runtime_func_name = "_lfortran_file_write";
             args_type.push_back(llvm::Type::getInt32Ty(context)); //unit_num
+            args_type.push_back(llvm::Type::getInt32Ty(context)); //recl
             args_type.push_back(llvm::Type::getInt32Ty(context)->getPointerTo()); //iostat
             args_type.push_back(llvm::Type::getInt8Ty(context)->getPointerTo()); //format_data
             args_type.push_back(llvm::Type::getInt64Ty(context));//format_len
@@ -11860,6 +11874,9 @@ public:
             printf_args.push_back(is_allocatable);
             printf_args.push_back(is_deferred);
             printf_args.push_back(string_len);
+        } else {
+            // For file write (not string write), add rec parameter
+            printf_args.push_back(rec);
         }
         printf_args.push_back(iostat);
         printf_args.push_back(fmt_data);

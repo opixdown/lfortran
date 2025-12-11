@@ -3659,13 +3659,14 @@ struct UNIT_FILE {
     int access_id;
     bool read_access;
     bool write_access;
+    int32_t recl;
 };
 
 int32_t last_index_used = -1;
 
 struct UNIT_FILE unit_to_file[MAXUNITS];
 
-void store_unit_file(int32_t unit_num, char* filename, FILE* filep, bool unit_file_bin, int access_id, bool read_access, bool write_access) {
+void store_unit_file(int32_t unit_num, char* filename, FILE* filep, bool unit_file_bin, int access_id, bool read_access, bool write_access, int32_t recl) {
     for( int i = 0; i <= last_index_used; i++ ) {
         if( unit_to_file[i].unit == unit_num ) {
             unit_to_file[i].unit = unit_num;
@@ -3674,6 +3675,7 @@ void store_unit_file(int32_t unit_num, char* filename, FILE* filep, bool unit_fi
             unit_to_file[i].access_id = access_id;
             unit_to_file[i].read_access = read_access;
             unit_to_file[i].write_access = write_access;
+            unit_to_file[i].recl = recl;
         }
     }
     last_index_used += 1;
@@ -3702,6 +3704,15 @@ FILE* get_file_pointer_from_unit(int32_t unit_num, bool *unit_file_bin, int *acc
         }
     }
     return NULL;
+}
+
+int32_t get_recl_from_unit(int32_t unit_num) {
+    for(int i = 0; i <= last_index_used; i++) {
+        if(unit_to_file[i].unit == unit_num) {
+            return unit_to_file[i].recl;
+        }
+    }
+    return 0;  // Not found or not specified
 }
 
 char* get_file_name_from_unit(int32_t unit_num, bool *unit_file_bin) {
@@ -3803,13 +3814,21 @@ _lfortran_open(int32_t unit_num,
                int64_t iomsg_len,
                int32_t* iostat,
                char* action,
-               int64_t action_len)
+               int64_t action_len,
+               int32_t recl)
 {
+    printf("DEBUG: _lfortran_open called, unit=%d, recl=%d\n", unit_num, recl);
+    fflush(stdout);
+
     if (iostat != NULL) {
         *iostat = 0;
+    } else {
+        printf("DEBUG: f_name = %.*s\n", (int)f_name_len, f_name);
     }
+    printf("DEBUG: Point A - before ini_status\n"); fflush(stdout);
     bool ini_file = true;
     if (f_name == NULL) {  // Not Provided
+        printf("DEBUG: f_name is NULL\n");
         char *prefix = "_lfortran_generated_file", *format = "txt";
         char unique_id[ID_LEN + 1];
         get_unique_ID(unique_id);
@@ -3825,6 +3844,8 @@ _lfortran_open(int32_t unit_num,
         status_len = 7;
         ini_status = false;
     }
+    printf("DEBUG: Point B - after ini_status\n"); fflush(stdout);
+
     bool ini_form = true;
     if (form == NULL) {
         if (access != NULL && streql(access, "stream")) {
@@ -3836,36 +3857,71 @@ _lfortran_open(int32_t unit_num,
         }
         ini_form = false;
     }
+        printf("DEBUG: Point C - after ini_form\n"); fflush(stdout);
+
     bool ini_access = true;
     if (access == NULL) {
         access = "sequential";
         access_len = 10;
         ini_access = false;
     }
+    printf("DEBUG: Point D - after ini_access\n"); fflush(stdout);
+
     bool ini_action = true;
     if (action == NULL) {
         action = "readwrite";
         action_len = 9;
         ini_action = false;
     }
+printf("DEBUG: Point E - after ini_action\n"); fflush(stdout);
+
+    if (recl <= 0) {
+    recl = 0;  // Default: 0 means not specified
+    } 
+printf("DEBUG: Point F - after recl normalize, recl=%d\n", recl); fflush(stdout);
+
     bool file_exists[1] = { false };
+    printf("DEBUG: Point G - before get_file_pointer\n"); fflush(stdout);
+
     FILE* already_open = get_file_pointer_from_unit(unit_num, NULL, NULL, NULL, NULL);
+    printf("DEBUG: Point H - after get_file_pointer\n"); fflush(stdout);
 
     trim_trailing_spaces(&f_name, &f_name_len, ini_file);
+    printf("DEBUG: Point I - after trim f_name\n"); fflush(stdout);
+
     trim_trailing_spaces(&status, &status_len, ini_status);
+    printf("DEBUG: Point J - after trim status\n"); fflush(stdout);
+
     trim_trailing_spaces(&form, &form_len, ini_form);
+    printf("DEBUG: Point K - after trim form\n"); fflush(stdout);
+
     trim_trailing_spaces(&action, &action_len, ini_action);
+    printf("DEBUG: Point L - after trim action\n"); fflush(stdout);
+
 
     // Prepare null-terminated names for C APIs
+    printf("DEBUG: Point M - before to_c_string conversions\n"); fflush(stdout);
+
     char* f_name_c = to_c_string((const fchar*)f_name, f_name_len);
+    printf("DEBUG: Point N - after f_name_c\n"); fflush(stdout);
+
     char* status_c = to_c_string((const fchar*)status, status_len);
+    printf("DEBUG: Point O - after status_c\n"); fflush(stdout);
+
     char* form_c = to_c_string((const fchar*)form, form_len);
+    printf("DEBUG: Point P - after form_c\n"); fflush(stdout);
+
     char* access_c = to_c_string((const fchar*)access, access_len);
+    printf("DEBUG: Point Q - after access_c\n"); fflush(stdout);
+
     char* action_c = to_c_string((const fchar*)action, action_len);
+    printf("DEBUG: Point R - after action_c\n"); fflush(stdout);
+
 
     _lfortran_inquire(
         (const fchar*)f_name, f_name_len, file_exists, -1, NULL, NULL, NULL,
         NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
+            printf("DEBUG: Point S - after inquire\n"); fflush(stdout);
     char* access_mode = NULL;
     /*
      STATUS=`specifier` in the OPEN statement
@@ -3876,6 +3932,9 @@ _lfortran_open(int32_t unit_num,
      * "replace" (file will be created, replacing any existing file)
      * "unknown" (it is not known whether the file exists)
      */
+    printf("DEBUG: Point T - starting status checks\n"); fflush(stdout);
+
+
     if (streql(status_c, "old")) {
         if (!*file_exists) {
             if (iostat != NULL) {
@@ -4039,7 +4098,23 @@ _lfortran_open(int32_t unit_num,
             perror(f_name_c);
             exit(1);
         }
-        store_unit_file(unit_num, f_name_c, fd, unit_file_bin, access_id, read_access, write_access);
+        if (streql(access_c, "direct")) {
+            access_id = 2;
+            if (recl <= 0) {
+                if (iostat != NULL) {
+                    *iostat = 5002;
+                    if ((iomsg != NULL) && (iomsg_len > 0)) {
+                        char* temp = "RECL must be specified and positive for ACCESS='direct'.";
+                        snprintf(iomsg, iomsg_len, "%s", temp);
+                        pad_with_spaces(iomsg, strlen(iomsg), iomsg_len);
+                    }
+                } else {
+                    printf("Runtime error: RECL must be specified for direct access\n");
+                    exit(1);
+                }
+            }
+        }
+        store_unit_file(unit_num, f_name_c, fd, unit_file_bin, access_id, read_access, write_access, recl);
         return (int64_t) fd;
     }
     free(f_name_c);
@@ -5149,7 +5224,7 @@ LFORTRAN_API char* _lpython_read(int64_t fd, int64_t n)
     return c;
 }
 
-LFORTRAN_API void _lfortran_file_write(int32_t unit_num, int32_t* iostat, const char* format_data, int64_t format_len, ...)
+LFORTRAN_API void _lfortran_file_write(int32_t unit_num, int32_t rec, int32_t* iostat, const char* format_data, int64_t format_len, ...)
 {
     bool unit_file_bin;
     int access_id;
@@ -5159,7 +5234,13 @@ LFORTRAN_API void _lfortran_file_write(int32_t unit_num, int32_t* iostat, const 
         filep = stdout;
     }
     if (unit_file_bin) {
-        fseek(filep, 0, SEEK_END);
+        if (rec > 0 && access_id == 2) {  // Direct access with record number
+            int32_t recl = get_recl_from_unit(unit_num);
+            long position = (rec - 1) * recl;
+            fseek(filep, position, SEEK_SET);
+        } else {
+            fseek(filep, 0, SEEK_END);  // Sequential - append to end
+        }
         va_list args;
         va_start(args, format_len);
         size_t total_size = 0;
