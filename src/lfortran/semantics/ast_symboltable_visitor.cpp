@@ -1948,13 +1948,24 @@ public:
             ASR::symbol_t *s = current_scope->get_symbol(var.first);
             if (s) {
                 ASR::ttype_t *t = ASRUtils::symbol_type(s);
-                if (ASR::is_a<ASR::Array_t>(*t)) {
-                    ASR::Array_t *a = ASR::down_cast<ASR::Array_t>(t);
-                    a->m_physical_type = ASR::array_physical_typeType::SIMDArray;
+                ASR::ttype_t *array_type = t;
+                bool is_allocatable = false;
+                // Unwrap Allocatable_t or Pointer_t
+                if (ASR::is_a<ASR::Allocatable_t>(*t)) {
+                    array_type = ASR::down_cast<ASR::Allocatable_t>(t)->m_type;
+                    is_allocatable = true;
+                } else if (ASR::is_a<ASR::Pointer_t>(*t)) {
+                    array_type = ASR::down_cast<ASR::Pointer_t>(t)->m_type;
+                    is_allocatable = true;
+                }
+                if (ASR::is_a<ASR::Array_t>(*array_type)) {
+                    ASR::Array_t *a = ASR::down_cast<ASR::Array_t>(array_type);
+                    if (!is_allocatable) {
+                        a->m_physical_type = ASR::array_physical_typeType::SIMDArray;
+                    }
                     // TODO: check all the SIMD requirements here:
                     // * 1D array
                     // * the right, compile time, size, compatible type
-                    // * Not allocatable, or pointer
                 } else {
                     diag.add(diag::Diagnostic(
                         "The SIMD variable `" + var.first + "` must be an array",
