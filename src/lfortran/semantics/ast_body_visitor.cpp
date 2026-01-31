@@ -2302,82 +2302,106 @@ public:
             }
         }
 
-        if ( mold_cond && !source_cond) {
+        if ( (mold_cond && !source_cond) || (source_cond && !mold_cond) ) {
+            bool use_mold = mold_cond && !source_cond;
+            ASR::expr_t* driver = use_mold ? mold : source;
+            ASR::ttype_t* driver_type = ASRUtils::type_get_past_allocatable_pointer(ASRUtils::expr_type(driver));
             Vec<ASR::alloc_arg_t> new_alloc_args_vec;
             new_alloc_args_vec.reserve(al, alloc_args_vec.size());
-            ASR::ttype_t* mold_type = ASRUtils::type_get_past_allocatable_pointer(ASRUtils::expr_type(mold));
+
             for (size_t i = 0; i < alloc_args_vec.size(); i++) {
-                if ( alloc_args_vec[i].n_dims == 0 ) {
-                    ASR::ttype_t* a_type = ASRUtils::type_get_past_allocatable(ASRUtils::expr_type(alloc_args_vec[i].m_a));
-                    if ( ASRUtils::check_equal_type(mold_type, a_type, mold, alloc_args_vec[i].m_a) ) {
-                        if (ASRUtils::is_array(mold_type)) {
-                            if (ASR::is_a<ASR::Array_t>(*mold_type) && ASR::down_cast<ASR::Array_t>(mold_type)->m_dims[0].m_length != nullptr) {
-                                ASR::Array_t* mold_array_type = ASR::down_cast<ASR::Array_t>(mold_type);
-                                ASR::alloc_arg_t new_arg;
-                                new_arg.loc = alloc_args_vec[i].loc;
-                                new_arg.m_a = alloc_args_vec[i].m_a;
-                                new_arg.m_len_expr = nullptr;
-                                new_arg.m_type = nullptr;
-                                new_arg.m_sym_subclass = nullptr;
-                                new_arg.m_dims = mold_array_type->m_dims;
-                                new_arg.n_dims = mold_array_type->n_dims;
-                                new_alloc_args_vec.push_back(al, new_arg);
-                            } else {
-                                int n_dims = ASRUtils::extract_n_dims_from_ttype(mold_type);
-                                Vec<ASR::dimension_t> mold_dims_vec; mold_dims_vec.reserve(al, n_dims);
-                                ASR::ttype_t* integer_type = ASRUtils::TYPE(ASR::make_Integer_t(al, x.base.base.loc, 4));
-                                for(int i=0; i<n_dims; i++) {
-                                    ASR::dimension_t dim;
-                                    dim.loc = x.base.base.loc;
-                                    dim.m_start = ASRUtils::EXPR(ASR::make_IntegerConstant_t(
-                                        al, x.base.base.loc, 1, integer_type));
-                                    dim.m_length = ASRUtils::EXPR(ASR::make_ArraySize_t(
-                            al, x.base.base.loc, mold, ASRUtils::EXPR(ASR::make_IntegerConstant_t(al, x.base.base.loc, i+1, integer_type)), integer_type, nullptr));
-                                    mold_dims_vec.push_back(al, dim);
-                                }
-                                ASR::alloc_arg_t new_arg;
-                                new_arg.loc = alloc_args_vec[i].loc;
-                                new_arg.m_a = alloc_args_vec[i].m_a;
-                                new_arg.m_len_expr = nullptr;
-                                new_arg.m_type = nullptr;
-                                new_arg.m_sym_subclass = nullptr;
-                                new_arg.m_dims = mold_dims_vec.p;
-                                new_arg.n_dims = mold_dims_vec.size();
-                                new_alloc_args_vec.push_back(al, new_arg);
-                            }
-                        } else if ( ASR::is_a<ASR::StructType_t>(*mold_type) ) {
-                            ASR::alloc_arg_t new_arg;
-                            new_arg.loc = alloc_args_vec[i].loc;
-                            new_arg.m_a = alloc_args_vec[i].m_a;
-                            new_arg.m_len_expr = nullptr;
-                            new_arg.m_type = mold_type;
-                            new_arg.m_sym_subclass = nullptr;
-                            new_arg.m_dims = nullptr;
-                            new_arg.n_dims = 0;
-                            new_alloc_args_vec.push_back(al, new_arg);
-                        } else {
-                            diag.add(Diagnostic("The type of the argument is not supported yet for mold.",
-                                Level::Error, Stage::Semantic, {
-                                    Label("",{mold->base.loc})
-                                }));
-                            throw SemanticAbort();
-                        }
-                    } else {
-                        diag.add(Diagnostic(
-                            "The type of the variable to be allocated does not match the type of the mold.",
-                            Level::Error, Stage::Semantic, {
-                                Label("",{x.base.base.loc})
-                            }));
-                        throw SemanticAbort();
-                    }
-                } else {
-                    new_alloc_args_vec.push_back(al, alloc_args_vec[i]);
+                ASR::alloc_arg_t arg = alloc_args_vec[i];
+                if (arg.n_dims != 0) {
+                    new_alloc_args_vec.push_back(al, arg);
+                    continue;
                 }
+                ASR::ttype_t* a_type = ASRUtils::type_get_past_allocatable( ASRUtils::expr_type(arg.m_a));
+                if (!ASRUtils::check_equal_type(driver_type, a_type, driver, arg.m_a)) {
+                    if (use_mold) {
+                        diag.add(Diagnostic(
+                            "The type of the variable to be allocated does not match "
+                            "the type of the mold.",
+                            Level::Error, Stage::Semantic, {
+                                Label("", { x.base.base.loc })
+                            }
+                        ));
+                        throw SemanticAbort();
+                    } else {
+                        new_alloc_args_vec.push_back(al, arg);
+                        continue;
+                    }
+                }
+
+                ASR::alloc_arg_t new_arg;
+                new_arg.loc = arg.loc;
+                new_arg.m_a = arg.m_a;
+                new_arg.m_len_expr = nullptr;
+                new_arg.m_sym_subclass = nullptr;
+                new_arg.m_type = nullptr;
+                new_arg.m_dims = nullptr;
+                new_arg.n_dims = 0;
+
+                if (ASRUtils::is_array(driver_type)) {
+                    if (ASR::is_a<ASR::Array_t>(*driver_type) &&
+                        ASR::down_cast<ASR::Array_t>(driver_type)
+                            ->m_dims[0].m_length != nullptr) {
+                        ASR::Array_t* array_type = ASR::down_cast<ASR::Array_t>(driver_type);
+                        new_arg.m_dims = array_type->m_dims;
+                        new_arg.n_dims = array_type->n_dims;
+                    } else {
+                        int n_dims = ASRUtils::extract_n_dims_from_ttype(driver_type);
+
+                        Vec<ASR::dimension_t> dims_vec;
+                        dims_vec.reserve(al, n_dims);
+
+                        ASR::ttype_t* integer_type = ASRUtils::TYPE(ASR::make_Integer_t(al, x.base.base.loc, 4));
+
+                        for (int d = 0; d < n_dims; d++) {
+                            ASR::dimension_t dim;
+                            dim.loc = x.base.base.loc;
+                            
+                            dim.m_start = ASRUtils::EXPR(ASR::make_IntegerConstant_t( al, x.base.base.loc, 1, integer_type));
+
+                            dim.m_length = ASRUtils::EXPR(
+                                ASR::make_ArraySize_t(
+                                    al, x.base.base.loc,
+                                    driver,
+                                    ASRUtils::EXPR(
+                                        ASR::make_IntegerConstant_t(
+                                            al, x.base.base.loc, d + 1,
+                                            integer_type)),
+                                    integer_type, nullptr));
+
+                            dims_vec.push_back(al, dim);
+                        }
+
+                        new_arg.m_dims = dims_vec.p;
+                        new_arg.n_dims = dims_vec.size();
+                    }
+
+                } else if (ASR::is_a<ASR::StructType_t>(*driver_type)) {
+                    new_arg.m_type = driver_type;
+                } else {
+                    if (use_mold) {
+                        diag.add(Diagnostic(
+                            "The type of the argument is not supported yet for mold.",
+                            Level::Error, Stage::Semantic, {
+                                Label("", { driver->base.loc })
+                            }
+                        ));
+                        throw SemanticAbort();
+                    } else {
+                        new_alloc_args_vec.push_back(al, arg);
+                        continue;
+                    }
+                }
+                new_alloc_args_vec.push_back(al, new_arg);
             }
             alloc_args_vec = new_alloc_args_vec;
-            source = mold;
+            if (use_mold) {
+                source = mold;
+            }
         }
-
         if( !cond ) {
             diag.add(Diagnostic(
                 "`allocate` statement only "
