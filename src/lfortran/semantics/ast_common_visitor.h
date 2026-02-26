@@ -5507,6 +5507,8 @@ public:
                 char *bindc_name = nullptr;
                 bool is_volatile = false;
                 bool is_protected = false;
+                bool is_pdt_kind_param = false;
+                bool is_pdt_len_param = false;
                 AST::AttrType_t *sym_type = nullptr;
 
                 if (AST::is_a<AST::AttrType_t>(*x.m_vartype))
@@ -5702,6 +5704,10 @@ public:
                                 is_volatile = true;
                             } else if (sa->m_attr == AST::simple_attributeType::AttrProtected) {
                                 is_protected = true;
+                            } else if (sa->m_attr == AST::simple_attributeType::AttrKind) {
+                                is_pdt_kind_param = true;
+                            } else if (sa->m_attr == AST::simple_attributeType::AttrLen) {
+                                is_pdt_len_param = true;
                             } else {
                                 diag.add(Diagnostic(
                                     "Attribute type not implemented yet " + std::to_string(sa->m_attr),

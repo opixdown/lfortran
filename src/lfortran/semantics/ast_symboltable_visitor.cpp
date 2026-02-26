@@ -2104,6 +2104,19 @@ public:
         simd_variables.clear();
     }
 
+    bool is_pdt_param_decl(const AST::Declaration_t* decl) {
+        for (size_t i = 0; i < decl->n_attributes; i++) {
+            if (AST::is_a<AST::SimpleAttribute_t>(*decl->m_attributes[i])) {
+                AST::SimpleAttribute_t* sa = AST::down_cast<AST::SimpleAttribute_t>(decl->m_attributes[i]);
+                if (sa->m_attr == AST::simple_attributeType::AttrKind ||
+                    sa->m_attr == AST::simple_attributeType::AttrLen) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     void visit_DerivedType(const AST::DerivedType_t &x) {
         dt_name = to_lower(x.m_name);
         bool is_abstract = false;
@@ -2147,6 +2160,36 @@ public:
         is_derived_type = true;
         ASR::accessType dflt_access_copy = dflt_access;
         for (size_t i=0; i<x.n_items; i++) {
+            // Handle PDT type parameter declarations (integer, kind :: k  or  integer, len :: l)
+            // Add them as Parameter integer variables with placeholder value 0
+            // so that members like integer(k) can resolve the symbol.
+            // They will be substituted with real values at instantiation time.
+            if (AST::is_a<AST::Declaration_t>(*x.m_items[i])) {
+                AST::Declaration_t* decl = AST::down_cast<AST::Declaration_t>(x.m_items[i]);
+                if (is_pdt_param_decl(decl)) {
+                    for (size_t j = 0; j < decl->n_syms; j++) {
+                        std::string param_name = to_lower(decl->m_syms[j].m_name);
+                        ASR::ttype_t* int_type = ASRUtils::TYPE(
+                            ASR::make_Integer_t(al, x.base.base.loc, 4));
+                        ASR::expr_t* placeholder = ASRUtils::EXPR(
+                            ASR::make_IntegerConstant_t(al, x.base.base.loc, 4, int_type));
+                        ASR::asr_t* param_var = ASRUtils::make_Variable_t_util(
+                            al, x.base.base.loc, current_scope,
+                            s2c(al, param_name),
+                            nullptr, 0,
+                            ASRUtils::intent_local,
+                            placeholder, placeholder,
+                            ASR::storage_typeType::Parameter,
+                            int_type, nullptr,
+                            ASR::abiType::Source,
+                            dflt_access,
+                            ASR::presenceType::Required, false);
+                        current_scope->add_symbol(param_name,
+                            ASR::down_cast<ASR::symbol_t>(param_var));
+                    }
+                    continue;
+                }
+            }
             try {
                 this->visit_unit_decl2(*x.m_items[i]);
             } catch (const SemanticAbort&) {
