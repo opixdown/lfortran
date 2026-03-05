@@ -128,6 +128,7 @@ namespace LCompilers::CommandLineInterface {
         bool disable_implicit_argument_casting = false;
         bool disable_error_banner = false;
         bool disable_realloc_lhs = false;
+        bool disable_loop_variable_after_loop = false;
         bool old_classes = false;
         std::string fpe_traps_str;
 
@@ -174,7 +175,8 @@ namespace LCompilers::CommandLineInterface {
         app.add_flag("--infer", opts.arg_infer, "Enable infer mode")->group(group_language_options);
         app.add_flag("--disable-implicit-argument-casting", disable_implicit_argument_casting, "Disable implicit argument casting")->group(group_language_options);
         app.add_flag("--logical-casting", compiler_options.logical_casting, "Allow logical casting")->group(group_language_options);
-        app.add_flag("--use-loop-variable-after-loop", compiler_options.po.use_loop_variable_after_loop, "Allow using loop variable after the loop")->group(group_language_options);
+        app.add_flag("--use-loop-variable-after-loop", compiler_options.po.use_loop_variable_after_loop, "Allow using loop variable after the loop (default: on, emits a warning)") ->group(group_language_options);
+        app.add_flag("--no-use-loop-variable-after-loop", disable_loop_variable_after_loop, "Disallow using loop variable after the loop (turns warning into error)")->group(group_language_options);
         app.add_flag("--legacy-array-sections", compiler_options.legacy_array_sections, "Enables passing array items as sections if required")->group(group_language_options);
 
         // Preprocessing-related flags
@@ -400,6 +402,11 @@ namespace LCompilers::CommandLineInterface {
 
         if (disable_realloc_lhs) {
             compiler_options.po.realloc_lhs_arrays = false;
+        }
+
+        if (disable_loop_variable_after_loop) {
+            compiler_options.po.use_loop_variable_after_loop = false;
+            compiler_options.use_loop_variable_after_loop = false;
         }
 
         if (old_classes) {

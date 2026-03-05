@@ -43,7 +43,7 @@ struct PassOptions {
     bool dump_fortran = false; // For developer debugging
     bool pass_cumulative = false; // Apply passes cumulatively
     bool disable_main = false;
-    bool use_loop_variable_after_loop = false;
+    bool use_loop_variable_after_loop = true;
     bool realloc_lhs_arrays = false;
     std::vector<int64_t> skip_optimization_func_instantiation;
     bool module_name_mangling = false;
@@ -132,7 +132,7 @@ struct CompilerOptions {
     bool infer_mode = false;
     bool print_leading_space = false;
     bool rtlib = false;
-    bool use_loop_variable_after_loop = false;
+    bool use_loop_variable_after_loop = true;
     std::string target = "";
     std::string arg_o = "";
     bool emit_debug_info = false;

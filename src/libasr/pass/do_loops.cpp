@@ -42,6 +42,16 @@ public:
         StatementWalkVisitor(al), pass_options(pass_options_) { }
 
     void visit_DoLoop(const ASR::DoLoop_t &x) {
+        if (use_loop_variable_after_loop && x.m_head.m_v &&
+                x.m_head.m_start && x.m_head.m_end) {
+            std::string var_name = std::string(ASRUtils::symbol_name(
+                ASR::down_cast<ASR::Var_t>(x.m_head.m_v)->m_v));
+            std::cerr << "warning: Loop variable `" << var_name
+                    << "` is used after the loop. Its value will be "
+                    << "upper_bound + step per the Fortran standard. "
+                    << "Use `--no-use-loop-variable-after-loop` to turn "
+                    << "this into a hard error." << std::endl;
+        }
         pass_result = PassUtils::replace_doloop(al, x, -1, use_loop_variable_after_loop, this->current_scope);
     }
 
