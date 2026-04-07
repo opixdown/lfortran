@@ -3905,10 +3905,9 @@ ASR::asr_t* make_ArraySize_t_util(
 
     if( for_type ) {
         LCOMPILERS_ASSERT_MSG(
-            ASR::is_a<ASR::Var_t>(*a_v) ||
-            ASR::is_a<ASR::StructInstanceMember_t>(*a_v) ||
-            ASR::is_a<ASR::FunctionParam_t>(*a_v),
-            "Found ASR::exprType::" + std::to_string(a_v->type));
+            ASRUtils::is_array(ASRUtils::expr_type(a_v)),
+            "make_ArraySize_t_util: expression must be an array type, but found exprType::" + 
+            std::to_string(a_v->type));
     }
 
     return ASR::make_ArraySize_t(al, a_loc, a_v, a_dim, a_type, a_value);
