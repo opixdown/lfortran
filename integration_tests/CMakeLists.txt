@@ -1743,6 +1743,7 @@ RUN(NAME intrinsics_454 LABELS gfortran llvm) # all/any with array section and w
 RUN(NAME intrinsics_455 LABELS gfortran llvm) # intrinsic declaration scope isolation
 RUN(NAME intrinsics_456 LABELS gfortran llvm) # move_alloc preserves lower bounds
 RUN(NAME intrinsics_457 LABELS gfortran llvm) # eoshift on 2D array with dim
+RUN(NAME intrinsics_458 LABELS gfortran llvm) # sign with common block variables
 
 RUN(NAME la_constants LABELS gfortran llvm llvm_wasm llvm_wasm_emcc) # LAPACK constants
 
@@ -3427,6 +3428,7 @@ RUN(NAME read_84 LABELS gfortran llvm)
 RUN(NAME read_85 LABELS gfortran llvm)
 RUN(NAME read_86 LABELS gfortran llvm)
 RUN(NAME read_87 LABELS gfortran llvm)
+RUN(NAME read_88 LABELS gfortran llvm)
 
 
 RUN(NAME read_90 LABELS gfortran llvm fortran)
