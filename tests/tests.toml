@@ -5153,6 +5153,10 @@ filename = "../integration_tests/file_53.f90"
 run = true
 
 [[test]]
+filename = "../integration_tests/real_constant.f90"
+run = true
+
+[[test]]
 filename = "errors/continue_compilation_walrus.f90"
 semantics_only_cc = true
 options = "--infer"
