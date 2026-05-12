@@ -8407,7 +8407,30 @@ public:
         var = start = end = nullptr;
         if (x.m_var) {
             const Location &var_loc = x.m_var_loc ? *x.m_var_loc : x.base.base.loc;
-            var = replace_with_common_block_variables(ASRUtils::EXPR(resolve_variable(var_loc, to_lower(x.m_var))));
+            std::string loop_var_name = to_lower(x.m_var);
+            // If the DO variable is not yet declared, implicitly declare it
+            // when default implicit typing is in effect (Fortran standard:
+            // letters i-n => integer, a-h/o-z => real). If IMPLICIT NONE
+            // is active for this letter the implicit_dictionary entry will
+            // be nullptr and resolve_variable will raise the proper error.
+            if (!current_scope->resolve_symbol(loop_var_name)) {
+                std::string first = std::string(1, loop_var_name[0]);
+                bool implicit_none_active =
+                    implicit_dictionary.find(first) != implicit_dictionary.end() &&
+                    implicit_dictionary.at(first) == nullptr;
+                if (!implicit_none_active) {
+                    if (implicit_dictionary.find(first) != implicit_dictionary.end() &&
+                            implicit_dictionary.at(first) != nullptr) {
+                        declare_implicit_variable2(var_loc, loop_var_name,
+                            ASRUtils::intent_local, implicit_dictionary.at(first));
+                    } else {
+                        declare_implicit_variable(var_loc, loop_var_name,
+                            ASRUtils::intent_local);
+                    }
+                }
+            }
+            var = replace_with_common_block_variables(
+                ASRUtils::EXPR(resolve_variable(var_loc, loop_var_name)));
         }
         if (x.m_start) {
             visit_expr(*x.m_start);
