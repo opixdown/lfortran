@@ -581,8 +581,32 @@ static inline ASR::expr_t* compare_helper(Allocator &al, ASR::expr_t* left_value
             !ASR::is_a<ASR::RealConstant_t>(*right_value)) {
             return nullptr;
         }
-        double left_val = ASR::down_cast<ASR::RealConstant_t>(left_value)->m_r;
-        double right_val = ASR::down_cast<ASR::RealConstant_t>(right_value)->m_r;
+        ASR::RealConstant_t *left_real = ASR::down_cast<ASR::RealConstant_t>(left_value);
+        ASR::RealConstant_t *right_real = ASR::down_cast<ASR::RealConstant_t>(right_value);
+        if (ASRUtils::extract_kind_from_ttype_t(left_real->m_type) == 16) {
+            int cmp = lf_f128_cmp(ASRUtils::get_real_16_constant_value(left_real),
+                ASRUtils::get_real_16_constant_value(right_real));
+            bool result = true;
+            switch (asr_op) {
+                case (ASR::cmpopType::Eq):  { result = result && (cmp == 0); break; }
+                case (ASR::cmpopType::Gt): { result = result && (cmp > 0); break; }
+                case (ASR::cmpopType::GtE): { result = result && (cmp >= 0); break; }
+                case (ASR::cmpopType::Lt): { result = result && (cmp < 0); break; }
+                case (ASR::cmpopType::LtE): { result = result && (cmp <= 0); break; }
+                case (ASR::cmpopType::NotEq): { result = result && (cmp != 0); break; }
+                default: {
+                    diag.add(diag::Diagnostic(
+                        "Comparison operator not implemented",
+                        Level::Error, Stage::Semantic, {
+                        diag::Label("", {loc})}));
+                    throw SemanticAbort();
+                }
+            }
+            return ASRUtils::EXPR(ASR::make_LogicalConstant_t(
+                al, loc, result, logical_type));
+        }
+        double left_val = left_real->m_r;
+        double right_val = right_real->m_r;
         bool result = true;
         switch (asr_op) {
             case (ASR::cmpopType::Eq):  { result = result && (left_val == right_val); break; }
@@ -9145,7 +9169,7 @@ public:
                     ASRUtils::type_get_past_allocatable(type)));
             }
         } else if (sym_type->m_type == AST::decl_typeType::TypeComplex) {
-            if (!is_derived_type && a_kind != 4 && a_kind != 8) {
+            if (!is_derived_type && a_kind != 4 && a_kind != 8 && a_kind != 16) {
                 diag.add(Diagnostic(
                     "Kind " + std::to_string(a_kind) + " is not supported for Complex",
                     Level::Error, Stage::Semantic, {
@@ -17317,12 +17341,22 @@ public:
     ASR::expr_t* visit_BinOp_helper(ASR::expr_t* left, ASR::expr_t* right, ASR::binopType op, const Location& loc, ASR::ttype_t* dest_type) {
         LCOMPILERS_ASSERT((left != nullptr) && (right != nullptr));
         if (ASR::is_a<ASR::RealConstant_t>(*left) && ASR::is_a<ASR::RealConstant_t>(*right)) {
+            if (ASRUtils::extract_kind_from_ttype_t(dest_type) == 16) {
+                return nullptr;
+            }
             double left_value = ASR::down_cast<ASR::RealConstant_t>(left)->m_r;
             double right_value = ASR::down_cast<ASR::RealConstant_t>(right)->m_r;
             return ASRUtils::EXPR(ASR::make_RealConstant_t(al, left->base.loc,
             perform_binop(left_value, right_value, op), dest_type));
         } else if (ASR::is_a<ASR::RealConstant_t>(*left) && ASR::is_a<ASR::IntegerConstant_t>(*right)){
             LCOMPILERS_ASSERT(op == ASR::binopType::Pow);
+            if (ASRUtils::extract_kind_from_ttype_t(dest_type) == 16) {
+                lf_float128 left_value = ASRUtils::get_real_16_constant_value(
+                    ASR::down_cast<ASR::RealConstant_t>(left));
+                int64_t right_value = ASR::down_cast<ASR::IntegerConstant_t>(right)->m_n;
+                lf_float128 result = lf_f128_from_double(std::pow(lf_f128_to_double(left_value), right_value));
+                return ASRUtils::make_real_16_constant(al, left->base.loc, result, dest_type);
+            }
             double left_value = ASR::down_cast<ASR::RealConstant_t>(left)->m_r;
             int64_t right_value = ASR::down_cast<ASR::IntegerConstant_t>(right)->m_n;
             return ASRUtils::EXPR(ASR::make_RealConstant_t(al, left->base.loc,
