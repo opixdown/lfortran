@@ -384,6 +384,9 @@ static inline ASR::expr_t *eval_ArrIntrinsic(Allocator & al,
     if (ASR::is_a<ASR::ArrayConstant_t>(*array)) {
         a = ASR::down_cast<ASR::ArrayConstant_t>(array);
         size = ASRUtils::get_fixed_size_of_array(a->m_type);
+        if (size == 0 && intrinsic_func_id == ASRUtils::IntrinsicArrayFunctions::Iparity) {
+            return ASRUtils::EXPR(ASR::make_IntegerConstant_t(al, loc, 0, t));
+        }
         args_value0 = ASRUtils::fetch_ArrayConstant_value(al, a, 0);
         if (!args_value0) return nullptr;
     } else {
