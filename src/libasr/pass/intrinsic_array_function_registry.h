@@ -3469,12 +3469,12 @@ namespace Iall {
     static inline ASR::expr_t *eval_Iall(Allocator & al,
         const Location & loc, ASR::ttype_t *t, Vec<ASR::expr_t*>& args,
         diag::Diagnostics& /*diag*/) {
-        return IanyIall::eval_IanyIall(al, loc, t, args, 1, std::bit_and<int64_t>());
+        return IanyIall::eval_IanyIall(al, loc, t, args, -1, std::bit_and<int64_t>());
     }
 
     static inline ASR::asr_t* create_Iall(Allocator& al, const Location& loc,
         Vec<ASR::expr_t*>& args, diag::Diagnostics& diag) {
-        return IanyIall::create_IanyIall(al, loc, args, diag, ASRUtils::IntrinsicArrayFunctions::Iall, 1, std::bit_and<int64_t>());
+        return IanyIall::create_IanyIall(al, loc, args, diag, ASRUtils::IntrinsicArrayFunctions::Iall, -1, std::bit_and<int64_t>());
     }
 
     static inline ASR::expr_t* instantiate_Iall(Allocator &al,
@@ -3484,7 +3484,7 @@ namespace Iall {
         ASRBuilder b(al, loc);
         return IanyIall::instantiate_IanyIall(al, loc, scope, arg_types, return_type,
         new_args, overload_id, ASRUtils::IntrinsicArrayFunctions::Iall,
-        b.i_t(1, return_type), &ASRBuilder::And);
+        b.Not(b.i_t(0, ASRUtils::type_get_past_array(return_type))), &ASRBuilder::And);
     }
 
 } // namespace Iall
