@@ -1701,3 +1701,15 @@ semantic error: duplicate statement label 1000
     |
 816 | 1000    continue
     |         ^^^^^^^^ 
+
+semantic error: Different character kinds in arguments to min0 are not allowed
+   --> tests/errors/continue_compilation_1.f90:821:18
+    |
+821 |         print *, min(ascii, wide)
+    |                  ^^^^^^^^^^^^^^^^ 
+
+semantic error: Different character kinds in arguments to max0 are not allowed
+   --> tests/errors/continue_compilation_1.f90:822:18
+    |
+822 |         print *, max(ascii, wide)
+    |                  ^^^^^^^^^^^^^^^^ 

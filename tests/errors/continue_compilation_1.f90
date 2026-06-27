@@ -815,4 +815,10 @@ program continue_compilation_1
 1000    continue
 1000    continue
     end subroutine
+    subroutine mixed_character_minmax()
+        character(kind=1) :: ascii
+        character(kind=4) :: wide
+        print *, min(ascii, wide)
+        print *, max(ascii, wide)
+    end subroutine
 end program
