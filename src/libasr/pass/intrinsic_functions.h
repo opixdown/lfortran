@@ -7514,6 +7514,10 @@ namespace Max {
         bool all_args_same_kind = true;
         for(size_t i=1; i<args.size(); i++) {
             if (ASRUtils::extract_kind_from_ttype_t(ASRUtils::expr_type(args[i])) != kind) {
+                if (ASRUtils::is_character(*arg_type)) {
+                    append_error(diag, "Different character kinds in arguments to max0 are not allowed", loc);
+                    return nullptr;
+                }
                 diag.semantic_warning_label("Different kinds of args in max0 is a non-standard extension", {loc},
                 "help: ensure all arguments have the same kind to make it standard");
                 all_args_same_kind = false;
@@ -7688,7 +7692,11 @@ namespace Min {
         bool all_args_same_kind = true;
         for(size_t i=1; i<args.size(); i++){
             if (ASRUtils::extract_kind_from_ttype_t(ASRUtils::expr_type(args[i])) != kind) {
-                diag.semantic_warning_label("Different kinds of args in max0 is a non-standard extension", {loc},
+                if (ASRUtils::is_character(*arg_type)) {
+                    append_error(diag, "Different character kinds in arguments to min0 are not allowed", loc);
+                    return nullptr;
+                }
+                diag.semantic_warning_label("Different kinds of args in min0 is a non-standard extension", {loc},
                 "help: ensure all arguments have the same kind to make it standard");
                 all_args_same_kind = false;
             }
