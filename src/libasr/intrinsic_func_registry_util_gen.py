@@ -810,7 +810,8 @@ intrinsic_funcs_args = {
     "Merge": [
         {
             "args": [("any", "any", "bool")],
-            "ret_type_arg_idx": 0
+            "ret_type_arg_idx": 0,
+            "return_array_arg_from_scalar_mask": True
         }
     ],
     "Mergebits": [
@@ -1218,7 +1219,7 @@ def add_create_func_return_src(func_name):
         src += indent * 3 +         "}\n"
         src += indent * 2 +     "}\n"
 
-        if func_name == "Merge":
+        if arg_infos[0].get("return_array_arg_from_scalar_mask", False):
             src += indent * 2 + "if (ASRUtils::is_array(return_type) && ASR::is_a<ASR::LogicalConstant_t>(*m_args[2])) {\n"
             src += indent * 3 + "ASR::LogicalConstant_t* mask = ASR::down_cast<ASR::LogicalConstant_t>(m_args[2]);\n"
             src += indent * 3 + "return (ASR::asr_t*) (mask->m_value ? m_args[0] : m_args[1]);\n"
