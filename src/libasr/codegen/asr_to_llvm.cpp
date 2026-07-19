@@ -6811,7 +6811,11 @@ public:
                         !ASR::is_a<ASR::Allocatable_t>(*v_sym->m_type);
                     if (!is_direct_char) {
                         setup_string(ptr_member, symbol_type);
+                        // `=> null()` on a character pointer component is not a string
+                        // value to copy; setup_string already left the descriptor in the
+                        // null/zero-length state that null() denotes.
                         if (!initialize_val && v && v->m_symbolic_value &&
+                            !ASR::is_a<ASR::PointerNullConstant_t>(*v->m_symbolic_value) &&
                             ASRUtils::is_string_only(ASRUtils::expr_type(v->m_symbolic_value))) {
                             visit_expr(*v->m_symbolic_value);
                             llvm_utils->lfortran_str_copy(
@@ -6874,6 +6878,10 @@ public:
                                     llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), total_bytes),
                                     llvm::MaybeAlign());
                             }
+                        } else if(ASR::is_a<ASR::PointerNullConstant_t>(*v->m_symbolic_value) &&
+                                  ASRUtils::is_string_only(expr_type(v->m_symbolic_value))) {
+                            // Scalar character pointer initialized with `=> null()`:
+                            // the zeroed descriptor is already the null state.
                         } else if(ASRUtils::is_string_only(expr_type(v->m_symbolic_value))) {
                             llvm_utils->lfortran_str_copy(
                             ptr_member, tmp,
